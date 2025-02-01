@@ -66,10 +66,10 @@ func matchDomain(pattern, domain string) bool {
 	return strings.Contains(domain, pattern)
 }
 
-func isSkipped(to string, rules []SkipRule) bool {
-	dest, err := parseDestination(to)
+func isSkipped(entry *LogEntry, rules []SkipRule) bool {
+	dest, err := parseDestination(entry.To)
 	if err != nil {
-		logWarn("Error parsing destination %s: %v", to, err)
+		logWarn("Error parsing destination %s: %v", entry.To, err)
 		return false
 	}
 
@@ -78,7 +78,7 @@ func isSkipped(to string, rules []SkipRule) bool {
 			if ip := net.ParseIP(dest.Host); ip != nil {
 				for _, pattern := range rule.IP {
 					if isIPInRange(ip, pattern) {
-						logInfo("Skipping %s: matched IP rule: %s", to, pattern)
+						logInfo("Skipping %s: matched IP rule: %s", entry.To, pattern)
 						return true
 					}
 				}
@@ -88,8 +88,17 @@ func isSkipped(to string, rules []SkipRule) bool {
 		if len(rule.Domain) > 0 {
 			for _, pattern := range rule.Domain {
 				if matchDomain(pattern, dest.Host) {
-					logInfo("Skipping %s: matched domain rule: %s", to, pattern)
+					logInfo("Skipping %s: matched domain rule: %s", entry.To, pattern)
 					return true
+				}
+			}
+
+			for _, address := range entry.ToAddr {
+				for _, pattern := range rule.Domain {
+					if matchDomain(pattern, address) {
+						logInfo("Skipping %s: matched domain rule %s via PTR %s", entry.To, pattern, address)
+						return true
+					}
 				}
 			}
 		}

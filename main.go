@@ -118,7 +118,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			if !isSkipped(logEntry.To, skipRules) {
+			if !isSkipped(logEntry, skipRules) {
 				jsonData, err := json.Marshal(logEntry)
 				if err != nil {
 					logError("Error marshaling log entry: %v", err)
