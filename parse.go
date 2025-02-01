@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 )
@@ -9,13 +10,14 @@ import (
 // TODO: `2025/02/01 22:33:25 from 92.62.56.223:0 rejected  proxy/vless/encoding: failed to read request version > websocket: close 1000 (normal)`
 
 type LogEntry struct {
-	Datetime string `json:"datetime"`
-	From     string `json:"from"`
-	Status   string `json:"status"`
-	To       string `json:"to"`
-	Route    string `json:"route,omitempty"`
-	ID       string `json:"id,omitempty"`
-	Username string `json:"username,omitempty"`
+	Datetime string   `json:"datetime"`
+	From     string   `json:"from"`
+	Status   string   `json:"status"`
+	To       string   `json:"to"`
+	Route    string   `json:"route,omitempty"`
+	ID       string   `json:"id,omitempty"`
+	Username string   `json:"username,omitempty"`
+	ToAddr   []string `json:"to_addr,omitempty"`
 }
 
 var routeArrowRegex = regexp.MustCompile(`(?:==>|->|>>)`)
@@ -40,7 +42,7 @@ func parseLog(logLine string) (*LogEntry, error) {
 		id, username = emailParts[0], emailParts[1]
 	}
 
-	return &LogEntry{
+	entry := &LogEntry{
 		Datetime: groups["datetime"],
 		From:     groups["from"],
 		Status:   groups["status"],
@@ -48,5 +50,19 @@ func parseLog(logLine string) (*LogEntry, error) {
 		Route:    routeArrowRegex.ReplaceAllString(groups["route"], "-"),
 		ID:       id,
 		Username: username,
-	}, nil
+	}
+
+	if dest, err := parseDestination(groups["to"]); err == nil {
+		if ip := net.ParseIP(dest.Host); ip != nil {
+			names, err := net.LookupAddr(ip.String())
+			if err == nil && len(names) > 0 {
+				for i := range names {
+					names[i] = strings.TrimSuffix(names[i], ".")
+				}
+				entry.ToAddr = names
+			}
+		}
+	}
+
+	return entry, nil
 }
