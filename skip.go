@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/url"
 	"strings"
 )
 
@@ -14,6 +15,14 @@ type Destination struct {
 }
 
 func parseDestination(to string) (*Destination, error) {
+	if u, err := url.Parse(to); err == nil && u.Host != "" {
+		return &Destination{
+			Protocol: "tcp",
+			Host:     u.Hostname(),
+			Port:     "443",
+		}, nil
+	}
+
 	parts := strings.SplitN(to, ":", 3)
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid destination format: %s", to)
