@@ -103,3 +103,4 @@ Mount a `skip-rules.json` file into `/etc/xray-core-loki-proxy/skip-rules.json` 
 | LOKI_PASSWORD | Password for Basic Auth | - |
 | LISTEN_HOST | Host to listen on | 0.0.0.0 |
 | LISTEN_PORT | Port to listen on | 8080 |
+| LOG_LEVEL | Log level (debug/info/warn/error) | info |

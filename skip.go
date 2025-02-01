@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"strings"
@@ -45,7 +44,7 @@ func isIPInRange(ip net.IP, pattern string) bool {
 	}
 	_, ipnet, err := net.ParseCIDR(pattern)
 	if err != nil {
-		log.Printf("Error parsing CIDR %s: %v\n", pattern, err)
+		logError("Error parsing CIDR %s: %v", pattern, err)
 		return false
 	}
 	return ipnet.Contains(ip)
@@ -70,7 +69,7 @@ func matchDomain(pattern, domain string) bool {
 func isSkipped(to string, rules []SkipRule) bool {
 	dest, err := parseDestination(to)
 	if err != nil {
-		log.Printf("Error parsing destination %s: %v\n", to, err)
+		logWarn("Error parsing destination %s: %v", to, err)
 		return false
 	}
 
@@ -79,7 +78,7 @@ func isSkipped(to string, rules []SkipRule) bool {
 			if ip := net.ParseIP(dest.Host); ip != nil {
 				for _, pattern := range rule.IP {
 					if isIPInRange(ip, pattern) {
-						log.Printf("Skipping %s: matched IP rule: %s\n", to, pattern)
+						logInfo("Skipping %s: matched IP rule: %s", to, pattern)
 						return true
 					}
 				}
@@ -89,7 +88,7 @@ func isSkipped(to string, rules []SkipRule) bool {
 		if len(rule.Domain) > 0 {
 			for _, pattern := range rule.Domain {
 				if matchDomain(pattern, dest.Host) {
-					log.Printf("Skipping %s: matched domain rule: %s\n", to, pattern)
+					logInfo("Skipping %s: matched domain rule: %s", to, pattern)
 					return true
 				}
 			}

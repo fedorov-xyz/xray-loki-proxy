@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 )
+
+// TODO: `2025/02/01 22:33:25 from 92.62.56.223:0 rejected  proxy/vless/encoding: failed to read request version > websocket: close 1000 (normal)`
 
 type LogEntry struct {
 	Datetime string `json:"datetime"`
@@ -22,7 +23,7 @@ var routeArrowRegex = regexp.MustCompile(`(?:==>|->|>>)`)
 func parseLog(logLine string) (*LogEntry, error) {
 	match := xrayLogFormat.FindStringSubmatch(logLine)
 	if match == nil {
-		log.Printf("Failed to parse log line: %s\n", logLine)
+		logWarn("Failed to parse log line: %s", logLine)
 		return nil, fmt.Errorf("no match")
 	}
 

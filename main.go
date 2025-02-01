@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -33,7 +32,7 @@ func loadSkipRules() error {
 	data, err := os.ReadFile(SKIP_RULES_PATH)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("Skip rules file not found at %s, continuing without rules\n", SKIP_RULES_PATH)
+			logInfo("Skip rules file not found at %s, continuing without rules", SKIP_RULES_PATH)
 			return nil
 		}
 		return fmt.Errorf("error reading skip rules file: %v", err)
@@ -43,14 +42,14 @@ func loadSkipRules() error {
 		return fmt.Errorf("error parsing skip rules: %v", err)
 	}
 
-	log.Printf("Loaded skip rules from %s\n", SKIP_RULES_PATH)
+	logInfo("Loaded skip rules from %s", SKIP_RULES_PATH)
 	return nil
 }
 
 func sendPushRequest(req *logproto.PushRequest) {
 	data, err := proto.Marshal(req)
 	if err != nil {
-		log.Printf("Error marshaling protobuf: %v\n", err)
+		logError("Error marshaling protobuf: %v", err)
 		return
 	}
 
@@ -59,7 +58,7 @@ func sendPushRequest(req *logproto.PushRequest) {
 	client := &http.Client{}
 	httpReq, err := http.NewRequest("POST", LOKI_ENDPOINT, bytes.NewReader(compressed))
 	if err != nil {
-		log.Printf("Error creating request: %v\n", err)
+		logError("Error creating request: %v", err)
 		return
 	}
 
@@ -71,25 +70,25 @@ func sendPushRequest(req *logproto.PushRequest) {
 
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		log.Printf("Error forwarding logs: %v\n", err)
+		logError("Error forwarding logs: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	log.Printf("Loki response: %s - %s\n", resp.Status, string(body))
+	logInfo("Loki response: %s - %s", resp.Status, string(body))
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("Error reading body: %v\n", err)
+		logError("Error reading body: %v", err)
 		http.Error(w, "Error reading body", http.StatusBadRequest)
 		return
 	}
 
 	if r.Header.Get("Content-Type") != "application/x-protobuf" {
-		log.Printf("Only protobuf requests are supported\n")
+		logWarn("Only protobuf requests are supported")
 		http.Error(w, "Only protobuf requests are supported", http.StatusNotImplemented)
 		return
 	}
@@ -98,14 +97,14 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	decoded, err := snappy.Decode(nil, body)
 	if err != nil {
-		log.Printf("Error decoding snappy: %v\n", err)
+		logError("Error decoding snappy: %v", err)
 		http.Error(w, "Error decoding snappy", http.StatusBadRequest)
 		return
 	}
 
 	var req logproto.PushRequest
 	if err := proto.Unmarshal(decoded, &req); err != nil {
-		log.Printf("Error unmarshaling protobuf: %v\n", err)
+		logError("Error unmarshaling protobuf: %v", err)
 		http.Error(w, "Error unmarshaling protobuf", http.StatusBadRequest)
 		return
 	}
@@ -115,14 +114,14 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		for _, entry := range stream.Entries {
 			logEntry, err := parseLog(entry.Line)
 			if err != nil {
-				log.Println("Skipping unparsable log:", entry.Line)
+				logWarn("Skipping unparsable log: %s", entry.Line)
 				continue
 			}
 
 			if !isSkipped(logEntry.To, skipRules) {
 				jsonData, err := json.Marshal(logEntry)
 				if err != nil {
-					log.Printf("Error marshaling log entry: %v\n", err)
+					logError("Error marshaling log entry: %v", err)
 					continue
 				}
 
@@ -151,7 +150,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	if err := loadSkipRules(); err != nil {
-		log.Fatalf("Failed to load skip rules: %v\n", err)
+		logError("Failed to load skip rules: %v", err)
+		os.Exit(1)
 	}
 
 	addr := fmt.Sprintf("%s:%s", LISTEN_HOST, LISTEN_PORT)
@@ -166,8 +166,9 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	log.Printf("Server started on %s\n", addr)
+	logInfo("Server started on %s", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatalf("Server failed: %v\n", err)
+		logError("Server failed: %v", err)
+		os.Exit(1)
 	}
 }
