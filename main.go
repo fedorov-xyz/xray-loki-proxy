@@ -118,6 +118,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
+			notifyTorrentIfNeeded(logEntry)
+
 			if !isSkipped(logEntry, skipRules) {
 				jsonData, err := json.Marshal(logEntry)
 				if err != nil {
