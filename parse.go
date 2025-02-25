@@ -15,8 +15,7 @@ type LogEntry struct {
 	Status   string   `json:"status"`
 	To       string   `json:"to"`
 	Route    string   `json:"route,omitempty"`
-	ID       string   `json:"id,omitempty"`
-	Username string   `json:"username,omitempty"`
+	Email    string   `json:"email,omitempty"`
 	ToAddr   []string `json:"to_addr,omitempty"`
 }
 
@@ -36,20 +35,13 @@ func parseLog(logLine string) (*LogEntry, error) {
 		}
 	}
 
-	emailParts := strings.SplitN(groups["email"], ".", 2)
-	id, username := "", ""
-	if len(emailParts) == 2 {
-		id, username = emailParts[0], emailParts[1]
-	}
-
 	entry := &LogEntry{
 		Datetime: groups["datetime"],
 		From:     groups["from"],
 		Status:   groups["status"],
 		To:       groups["to"],
 		Route:    routeArrowRegex.ReplaceAllString(groups["route"], "-"),
-		ID:       id,
-		Username: username,
+		Email:    groups["email"],
 	}
 
 	if dest, err := parseDestination(groups["to"]); err == nil {

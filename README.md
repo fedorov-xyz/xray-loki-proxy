@@ -17,8 +17,7 @@ The log will be transformed into the following JSON format:
     "status": "accepted",
     "to": "tcp:www.google.com:443",
     "route": "VLESS - DIRECT",
-    "id": "1",
-    "username": "robin"
+    "email": "robin@example.com"
 }
 ```
 
@@ -104,3 +103,29 @@ Mount a `skip-rules.json` file into `/etc/xray-core-loki-proxy/skip-rules.json` 
 | LISTEN_HOST | Host to listen on | 0.0.0.0 |
 | LISTEN_PORT | Port to listen on | 8080 |
 | LOG_LEVEL | Log level (debug/info/warn/error) | info |
+| TORRENT_TAG | Tag to detect torrent traffic in route field | - |
+| TORRENT_NOTIFY_URL | URL to send POST notifications about torrent traffic | - |
+
+### Torrent Detection
+
+If both `TORRENT_TAG` and `TORRENT_NOTIFY_URL` are set, the service will send POST notifications
+to the specified URL when it detects the tag in the route field. For example:
+
+```yaml
+environment:
+  - TORRENT_TAG=TORRENT
+  - TORRENT_NOTIFY_URL=http://notify:8080/torrent
+```
+
+The notification will be sent as a JSON POST request with the full log entry:
+
+```json
+{
+  "datetime": "2024-01-01 00:00:00",
+  "from": "127.0.0.1",
+  "status": "accepted",
+  "to": "tcp:tracker.example.com:6969",
+  "route": "VLESS - BitTorrent",
+  "email": "robin@example.com"
+}
+```
