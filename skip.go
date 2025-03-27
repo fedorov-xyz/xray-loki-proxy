@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -19,6 +20,16 @@ func parseDestination(to string) (*Destination, error) {
 			Protocol: "tcp",
 			Host:     u.Hostname(),
 			Port:     "443",
+		}, nil
+	}
+
+	// Check IPv6 format: protocol:[ipv6]:port
+	ipv6Regex := regexp.MustCompile(`^([^:]+):\[([^\]]+)\]:(.+)$`)
+	if matches := ipv6Regex.FindStringSubmatch(to); matches != nil {
+		return &Destination{
+			Protocol: matches[1],
+			Host:     matches[2],
+			Port:     matches[3],
 		}, nil
 	}
 
