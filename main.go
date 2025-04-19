@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +18,7 @@ var LOKI_USERNAME = getEnv("LOKI_USERNAME", "")
 var LOKI_PASSWORD = getEnv("LOKI_PASSWORD", "")
 var LISTEN_HOST = getEnv("LISTEN_HOST", "0.0.0.0")
 var LISTEN_PORT = getEnv("LISTEN_PORT", "8080")
+var OUTPUT_FILE = getEnv("OUTPUT_FILE", "")
 
 const SKIP_RULES_PATH = "/etc/xray-loki-proxy/skip-rules.json"
 
@@ -46,37 +45,29 @@ func loadSkipRules() error {
 	return nil
 }
 
-func sendPushRequest(req *logproto.PushRequest) {
-	data, err := proto.Marshal(req)
-	if err != nil {
-		logError("Error marshaling protobuf: %v", err)
+func writeToFile(entry *LogEntry) {
+	if OUTPUT_FILE == "" {
+		logError("OUTPUT_FILE environment variable is not set")
 		return
 	}
 
-	compressed := snappy.Encode(nil, data)
-
-	client := &http.Client{}
-	httpReq, err := http.NewRequest("POST", LOKI_ENDPOINT, bytes.NewReader(compressed))
+	f, err := os.OpenFile(OUTPUT_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		logError("Error creating request: %v", err)
+		logError("Error opening file: %v", err)
+		return
+	}
+	defer f.Close()
+
+	jsonData, err := json.Marshal(entry)
+	if err != nil {
+		logError("Error marshaling log entry: %v", err)
 		return
 	}
 
-	httpReq.Header.Set("Content-Type", "application/x-protobuf")
-	if LOKI_USERNAME != "" && LOKI_PASSWORD != "" {
-		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(LOKI_USERNAME+":"+LOKI_PASSWORD))
-		httpReq.Header.Set("Authorization", auth)
-	}
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		logError("Error forwarding logs: %v", err)
+	if _, err := f.WriteString(string(jsonData) + "\n"); err != nil {
+		logError("Error writing to file: %v", err)
 		return
 	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	logInfo("Loki response: %s - %s", resp.Status, string(body))
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -93,8 +84,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var streams []logproto.Stream
-
 	decoded, err := snappy.Decode(nil, body)
 	if err != nil {
 		logError("Error decoding snappy: %v", err)
@@ -110,7 +99,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, stream := range req.Streams {
-		var entries []logproto.Entry
 		for _, entry := range stream.Entries {
 			logEntry, err := parseLog(entry.Line)
 			if err != nil {
@@ -121,30 +109,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			notifyTorrentIfNeeded(logEntry)
 
 			if !isSkipped(logEntry, skipRules) {
-				jsonData, err := json.Marshal(logEntry)
-				if err != nil {
-					logError("Error marshaling log entry: %v", err)
-					continue
-				}
-
-				entries = append(entries, logproto.Entry{
-					Timestamp: entry.Timestamp,
-					Line:      string(jsonData),
-				})
+				writeToFile(logEntry)
 			}
 		}
-
-		if len(entries) > 0 {
-			streams = append(streams, logproto.Stream{
-				Labels:  stream.Labels,
-				Entries: entries,
-			})
-		}
-	}
-
-	if len(streams) > 0 {
-		req.Streams = streams
-		sendPushRequest(&req)
 	}
 
 	w.WriteHeader(http.StatusOK)

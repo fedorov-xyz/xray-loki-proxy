@@ -1,23 +1,44 @@
-# xray-core Loki Proxy
+# xray-core Log Parser
 
-Proxy server for parsing and filtering xray-core access logs. It will be useful if Promtail / Loki / Grafana Alloy tools are used. The server acts as an intermediary between the reader of the logs and Loki itself.
+Proxy server for parsing and filtering xray-core access logs. The server accepts logs in Loki logproto format and writes them to a file in JSON format.
+
+## Why This Tool?
+
+This tool is designed to work as part of a reliable log processing pipeline with Grafana Agent. Here's the complete workflow:
+
+1. **Initial Log Collection**:
+
+   - Grafana Agent reads the original Xray access logs
+   - Sends them to this server in Loki logproto format
+
+2. **Log Processing**:
+
+   - The server parses each log entry
+   - Applies filtering rules (skip rules)
+   - Converts logs to a structured JSON format
+   - Writes filtered and parsed logs to a new file
+
+3. **Reliable Log Delivery**:
+   - Grafana Agent can then read the processed JSON file
+   - Uses its built-in log reading capabilities
+   - Reliably delivers logs to their final destination (e.g., Grafana)
 
 Flow:
 
 ```
-Grafana Alloy -> proxy -> Grafana Loki
+Grafana Agent -> proxy -> Output file -> Grafana Agent -> Final Destination
 ```
 
 The log will be transformed into the following JSON format:
 
 ```json
 {
-    "datetime": "2024-01-01 00:00:00",
-    "from": "127.0.0.1",
-    "status": "accepted",
-    "to": "tcp:www.google.com:443",
-    "route": "VLESS - DIRECT",
-    "email": "robin@example.com"
+  "datetime": "2024-01-01 00:00:00",
+  "from": "127.0.0.1",
+  "status": "accepted",
+  "to": "tcp:www.google.com:443",
+  "route": "VLESS - DIRECT",
+  "email": "robin@example.com"
 }
 ```
 
@@ -31,13 +52,12 @@ services:
     image: ghcr.io/fedorov-xyz/xray-loki-proxy:latest
     container_name: xray-loki-proxy
     environment:
-      - LOKI_ENDPOINT=http://loki:3100/loki/api/v1/push
-      - LOKI_USERNAME=user
-      - LOKI_PASSWORD=pass
-      - LISTEN_HOST=0.0.0.0  # optional, default 0.0.0.0
-      - LISTEN_PORT=8080     # optional, default 8080
+      - OUTPUT_FILE=/var/log/xray/access.log.json
+      - LISTEN_HOST=0.0.0.0 # optional, default 0.0.0.0
+      - LISTEN_PORT=8080 # optional, default 8080
     volumes:
       - ./skip-rules.json:/etc/xray-loki-proxy/skip-rules.json
+      - /var/log/xray:/var/log/xray
     ports:
       - "8080:8080"
 ```
@@ -70,41 +90,31 @@ loki.source.file "xray_access" {
 
 ### Skip Rules Configuration
 
-The feature is used to avoid sending logs to Loki in which traffic goes to some hosts or IPs. For example, if you don't want tens of thousands of hits to `google.com` in the logs, you can filter that out.
+The feature is used to avoid writing logs to the output file in which traffic goes to some hosts or IPs. For example, if you don't want tens of thousands of hits to `google.com` in the logs, you can filter that out.
 
 Mount a `skip-rules.json` file into `/etc/xray-core-loki-proxy/skip-rules.json` with filtering rules:
 
-```json5
+```json
 [
   {
-    "domain": [
-      "domain:google.com",    // filters example.com and all subdomains
-      "full:example.com",     // filters exact match of example.com only
-      "example.com"           // filters any domain containing example.com
-    ]
+    "domain": ["domain:google.com", "full:example.com", "example.com"]
   },
   {
-    "ip": [
-      "1.1.1.1",            // Strict IP match
-      "0.0.0.0/8",          // CIDR match
-      "10.0.0.0/8"
-    ]
+    "ip": ["1.1.1.1", "0.0.0.0/8", "10.0.0.0/8"]
   }
 ]
 ```
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| LOKI_ENDPOINT | URL to send logs to Loki | - |
-| LOKI_USERNAME | Username for Basic Auth | - |
-| LOKI_PASSWORD | Password for Basic Auth | - |
-| LISTEN_HOST | Host to listen on | 0.0.0.0 |
-| LISTEN_PORT | Port to listen on | 8080 |
-| LOG_LEVEL | Log level (debug/info/warn/error) | info |
-| TORRENT_TAG | Tag to detect torrent traffic in route field | - |
-| TORRENT_NOTIFY_URL | URL to send POST notifications about torrent traffic | - |
+| Variable           | Description                                          | Default |
+| ------------------ | ---------------------------------------------------- | ------- |
+| OUTPUT_FILE        | Path to the output JSON file                         | -       |
+| LISTEN_HOST        | Host to listen on                                    | 0.0.0.0 |
+| LISTEN_PORT        | Port to listen on                                    | 8080    |
+| LOG_LEVEL          | Log level (debug/info/warn/error)                    | info    |
+| TORRENT_TAG        | Tag to detect torrent traffic in route field         | -       |
+| TORRENT_NOTIFY_URL | URL to send POST notifications about torrent traffic | -       |
 
 ### Torrent Detection
 
