@@ -127,15 +127,29 @@ environment:
   - TORRENT_NOTIFY_URL=http://notify:8080/torrent
 ```
 
-The notification will be sent as a JSON POST request with the full log entry:
+Notifications are batched for efficiency:
+- Up to 1000 entries per batch
+- Sent every 20 seconds or when batch is full
+
+The notification will be sent as a JSON POST request with an array of log entries:
 
 ```json
-{
-  "datetime": "2024-01-01 00:00:00",
-  "from": "127.0.0.1",
-  "status": "accepted",
-  "to": "tcp:tracker.example.com:6969",
-  "route": "VLESS - BitTorrent",
-  "email": "robin@example.com"
-}
+[
+  {
+    "datetime": "2024-01-01 00:00:00",
+    "from": "127.0.0.1",
+    "status": "accepted",
+    "to": "tcp:tracker.example.com:6969",
+    "route": "VLESS - BitTorrent",
+    "email": "robin@example.com"
+  },
+  {
+    "datetime": "2024-01-01 00:00:01",
+    "from": "127.0.0.2",
+    "status": "accepted",
+    "to": "tcp:tracker.example.com:6969",
+    "route": "VLESS - BitTorrent",
+    "email": "john@example.com"
+  }
+]
 ```
