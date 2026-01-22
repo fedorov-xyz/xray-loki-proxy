@@ -123,6 +123,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	startTorrentNotifier()
+
 	addr := fmt.Sprintf("%s:%s", LISTEN_HOST, LISTEN_PORT)
 
 	http.HandleFunc("/loki/api/v1/push", handler)
