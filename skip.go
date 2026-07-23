@@ -1,48 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"net"
-	"net/url"
-	"regexp"
 	"strings"
 )
-
-type Destination struct {
-	Protocol string // tcp/udp
-	Host     string // domain or IP
-	Port     string // port number
-}
-
-func parseDestination(to string) (*Destination, error) {
-	if u, err := url.Parse(to); err == nil && u.Host != "" {
-		return &Destination{
-			Protocol: "tcp",
-			Host:     u.Hostname(),
-			Port:     "443",
-		}, nil
-	}
-
-	// Check IPv6 format: protocol:[ipv6]:port
-	ipv6Regex := regexp.MustCompile(`^([^:]+):\[([^\]]+)\]:(.+)$`)
-	if matches := ipv6Regex.FindStringSubmatch(to); matches != nil {
-		return &Destination{
-			Protocol: matches[1],
-			Host:     matches[2],
-			Port:     matches[3],
-		}, nil
-	}
-
-	parts := strings.SplitN(to, ":", 3)
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid destination format: %s", to)
-	}
-	return &Destination{
-		Protocol: parts[0],
-		Host:     parts[1],
-		Port:     parts[2],
-	}, nil
-}
 
 type SkipRule struct {
 	Domain []string `json:"domain,omitempty"`
@@ -78,16 +39,6 @@ func matchDomain(pattern, domain string) bool {
 }
 
 func isSkipped(entry *LogEntry, rules []SkipRule) bool {
-	dest, err := parseDestination(entry.To)
-	if err != nil {
-		logWarn("Error parsing destination %s: %v", entry.To, err)
-		return false
-	}
-
-	return matchSkipRules(entry.To, dest.Host, entry.ToAddr, rules)
-}
-
-func isSkippedV2(entry *LogEntryV2, rules []SkipRule) bool {
 	return matchSkipRules(entry.DestHost, entry.DestHost, entry.ToAddr, rules)
 }
 

@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-var VECTOR_ENDPOINT = getEnv("VECTOR_ENDPOINT", "http://vector:8080")
-
 const (
 	// vectorScannerMaxLine caps a single raw log line at ~1 MB.
 	vectorScannerMaxLine = 1 << 20
@@ -28,30 +26,30 @@ const (
 
 var vectorHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
-// forwardedBatches remembers sha256 of bodies already sent to Vector.
+// forwardedBatches remembers sha256 of bodies already emitted successfully.
 var forwardedBatches sync.Map // batchID(string) -> struct{}
 
-// processLine parses a raw Xray access log line into a v2 event.
+// processLine parses a raw Xray access log line into a structured event.
 // Returns nil when the line should be skipped/filtered.
-func processLine(line string) (*LogEntryV2, error) {
-	entryV2, err := parseLogV2(line)
+func processLine(line string) (*LogEntry, error) {
+	entry, err := parseLog(line)
 	if err != nil {
 		return nil, err
 	}
 
-	notifyTorrentIfNeededV2(entryV2)
+	notifyTorrentIfNeeded(entry)
 
-	if isSkippedV2(entryV2, skipRules) {
+	if isSkipped(entry, skipRules) {
 		return nil, nil
 	}
 
-	return entryV2, nil
+	return entry, nil
 }
 
 // processLinesParallel parses lines concurrently (bounded) and returns a dense
 // list of events to forward, preserving input order.
-func processLinesParallel(rawLines []string) []*LogEntryV2 {
-	slots := make([]*LogEntryV2, len(rawLines))
+func processLinesParallel(rawLines []string) []*LogEntry {
+	slots := make([]*LogEntry, len(rawLines))
 	sem := make(chan struct{}, vectorParseConcurrency)
 	var wg sync.WaitGroup
 
@@ -74,7 +72,7 @@ func processLinesParallel(rawLines []string) []*LogEntryV2 {
 	}
 	wg.Wait()
 
-	out := make([]*LogEntryV2, 0, len(rawLines))
+	out := make([]*LogEntry, 0, len(rawLines))
 	for _, entry := range slots {
 		if entry != nil {
 			out = append(out, entry)
@@ -89,8 +87,35 @@ func hashBatch(body []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func emitBatch(entries []*LogEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	if OUTPUT_FILE != "" {
+		for _, entry := range entries {
+			if err := appendJSONLine(OUTPUT_FILE, entry); err != nil {
+				return fmt.Errorf("write file: %w", err)
+			}
+		}
+		return nil
+	}
+
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	for _, entry := range entries {
+		if err := encoder.Encode(entry); err != nil {
+			return fmt.Errorf("encode: %w", err)
+		}
+	}
+	if err := forwardToVector(buf.Bytes()); err != nil {
+		return fmt.Errorf("forward: %w", err)
+	}
+	return nil
+}
+
 // vectorIngestHandler reads a newline-delimited batch of raw Xray log lines,
-// processes each one, and forwards the surviving v2 events to Vector as NDJSON.
+// processes each one, and emits the surviving events to the configured sink.
 func vectorIngestHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -138,34 +163,27 @@ func vectorIngestHandler(w http.ResponseWriter, r *http.Request) {
 	forwarded := len(parsed)
 	skipped := len(rawLines) - forwarded
 
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	for _, entry := range parsed {
-		if err := encoder.Encode(entry); err != nil {
-			logError("vector_ingest batch=%s status=%d lines=%d skipped=%d forwarded=%d parse=%s total=%s err=encode: %v",
-				batchID, http.StatusInternalServerError, len(rawLines), skipped, forwarded, parseDur, time.Since(start), err)
-			http.Error(w, "Error encoding event", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	var forwardDur time.Duration
+	var emitDur time.Duration
 	if forwarded > 0 {
 		t0 := time.Now()
-		if err := forwardToVector(buf.Bytes()); err != nil {
-			forwardDur = time.Since(t0)
-			logError("vector_ingest batch=%s status=%d lines=%d skipped=%d forwarded=%d parse=%s forward=%s total=%s err=forward: %v",
-				batchID, http.StatusBadGateway, len(rawLines), skipped, forwarded, parseDur, forwardDur, time.Since(start), err)
-			http.Error(w, "Error forwarding to Vector", http.StatusBadGateway)
+		if err := emitBatch(parsed); err != nil {
+			emitDur = time.Since(t0)
+			status := http.StatusBadGateway
+			if OUTPUT_FILE != "" {
+				status = http.StatusInternalServerError
+			}
+			logError("vector_ingest batch=%s status=%d lines=%d skipped=%d forwarded=%d parse=%s emit=%s total=%s err=emit: %v",
+				batchID, status, len(rawLines), skipped, forwarded, parseDur, emitDur, time.Since(start), err)
+			http.Error(w, "Error emitting events", status)
 			return
 		}
-		forwardDur = time.Since(t0)
+		emitDur = time.Since(t0)
 		forwardedBatches.Store(batchID, struct{}{})
 	}
 
 	w.WriteHeader(http.StatusOK)
-	logDebug("vector_ingest batch=%s status=%d lines=%d skipped=%d forwarded=%d parse=%s forward=%s total=%s",
-		batchID, http.StatusOK, len(rawLines), skipped, forwarded, parseDur, forwardDur, time.Since(start))
+	logDebug("vector_ingest batch=%s status=%d lines=%d skipped=%d forwarded=%d parse=%s emit=%s total=%s",
+		batchID, http.StatusOK, len(rawLines), skipped, forwarded, parseDur, emitDur, time.Since(start))
 }
 
 func forwardToVector(payload []byte) error {

@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -22,7 +25,7 @@ func TestProcessLinesParallel(t *testing.T) {
 		rules      []SkipRule
 		in         []string
 		wantEmails []string
-		want       []LogEntryV2
+		want       []LogEntry
 	}{
 		{
 			name:       "empty input",
@@ -33,7 +36,7 @@ func TestProcessLinesParallel(t *testing.T) {
 			name:       "preserves order for all valid lines",
 			in:         []string{lineA, lineB, lineC},
 			wantEmails: []string{"1204", "8831", "7712"},
-			want: []LogEntryV2{
+			want: []LogEntry{
 				{
 					Datetime:  "2026-07-23 10:11:12.100000",
 					FromIP:    "203.0.113.47",
@@ -114,7 +117,7 @@ func TestProcessLinesParallel(t *testing.T) {
 			if tt.want == nil {
 				return
 			}
-			gotNorm := make([]LogEntryV2, len(got))
+			gotNorm := make([]LogEntry, len(got))
 			for i, e := range got {
 				gotNorm[i] = *e
 				// ToAddr comes from live PTR; do not assert on it.
@@ -183,5 +186,84 @@ func TestHashBatch_Stable(t *testing.T) {
 	}
 	if len(ha) != 64 { // sha256 hex
 		t.Fatalf("unexpected digest len %d", len(ha))
+	}
+}
+
+func TestValidateSinkConfig(t *testing.T) {
+	prevFile, prevVector := OUTPUT_FILE, VECTOR_ENDPOINT
+	t.Cleanup(func() {
+		OUTPUT_FILE, VECTOR_ENDPOINT = prevFile, prevVector
+	})
+
+	tests := []struct {
+		name   string
+		file   string
+		vector string
+		wantOK bool
+	}{
+		{name: "neither", wantOK: false},
+		{name: "both", file: "/tmp/out.json", vector: "http://vector:8080", wantOK: false},
+		{name: "file only", file: "/tmp/out.json", wantOK: true},
+		{name: "vector only", vector: "http://vector:8080", wantOK: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			OUTPUT_FILE, VECTOR_ENDPOINT = tt.file, tt.vector
+			err := validateSinkConfig()
+			if tt.wantOK && err != nil {
+				t.Fatalf("validateSinkConfig() error = %v, want nil", err)
+			}
+			if !tt.wantOK && err == nil {
+				t.Fatal("validateSinkConfig() error = nil, want error")
+			}
+		})
+	}
+}
+
+func TestEmitBatch_File(t *testing.T) {
+	prevFile, prevVector := OUTPUT_FILE, VECTOR_ENDPOINT
+	t.Cleanup(func() {
+		OUTPUT_FILE, VECTOR_ENDPOINT = prevFile, prevVector
+	})
+
+	dir := t.TempDir()
+	path := dir + "/out.ndjson"
+	OUTPUT_FILE = path
+	VECTOR_ENDPOINT = ""
+
+	entries := []*LogEntry{
+		{
+			Datetime:  "2026-07-23 10:11:12.100000",
+			Email:     "1204",
+			FromIP:    "203.0.113.47",
+			FromPort:  4821,
+			DestProto: "tcp",
+			DestHost:  "198.51.100.88",
+			DestPort:  443,
+			Status:    "accepted",
+			Route:     "IN_TCP_XTLS_A7 - DIRECT",
+			ToAddr:    []string{},
+		},
+	}
+
+	if err := emitBatch(entries); err != nil {
+		t.Fatalf("emitBatch() error = %v", err)
+	}
+	if err := emitBatch(nil); err != nil {
+		t.Fatalf("emitBatch(nil) error = %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	line := strings.TrimSpace(string(data))
+	var got LogEntry
+	if err := json.Unmarshal([]byte(line), &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if got.Email != "1204" || got.DestHost != "198.51.100.88" {
+		t.Fatalf("unexpected entry: %+v", got)
 	}
 }

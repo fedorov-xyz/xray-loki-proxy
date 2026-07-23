@@ -1,18 +1,18 @@
 # Agent notes — xray-core-loki-proxy
 
-Small Go proxy: accepts Loki `logproto` push requests, parses Xray-core access log lines into `LogEntry`, applies skip rules, optionally notifies on torrent tags, appends JSON lines to `OUTPUT_FILE`. Also exposes `/vector/ingest` which emits `LogEntryV2` NDJSON for Vector.
+Small Go proxy: accepts raw Xray-core access log lines via `/vector/ingest`, parses them into `LogEntry`, applies skip rules, optionally notifies on torrent tags, then emits NDJSON to exactly one sink — `VECTOR_ENDPOINT` (HTTP) or `OUTPUT_FILE` (append).
 
 ## Layout
 
 | File | Role |
 |------|------|
-| `main.go` | HTTP handlers (`/loki/api/v1/push`, `/vector/ingest`, readiness), regex `xrayLogFormat`, file writer |
-| `parse.go` | `LogEntry` / `LogEntryV2`, `parseLog` / `parseLogV2` (route arrows → ` - `; optional PTR → `to_addr`) |
-| `vector.go` | Vector ingest handler + line processing |
-| `skip.go` | destination parsing, domain/IP skip rules |
-| `torrent.go` | batched torrent notify |
+| `main.go` | HTTP handlers (`/vector/ingest`, readiness), sink config validation, regex `xrayLogFormat`, file writer |
+| `parse.go` | `LogEntry`, `parseLog` (route arrows → ` - `; timed PTR → `to_addr`) |
+| `vector.go` | Vector ingest handler, parallel line processing, emit to file or HTTP |
+| `skip.go` | domain/IP skip rules |
+| `torrent.go` | batched torrent notify (`LogEntry` payload) |
 | `log.go` / `utils.go` | logging + `getEnv` |
-| `parse_legacy_test.go` / `parse_v2_test.go` | detailed behavior + JSON-contract tests for legacy and v2 |
+| `parse_test.go` / `vector_test.go` | parse JSON-contract + ingest/process tests |
 
 ## Commands
 
@@ -28,8 +28,10 @@ go vet ./...
 # local binary
 go build -o xray-loki-proxy .
 
-# run (needs OUTPUT_FILE)
+# run (exactly one sink)
 OUTPUT_FILE=/tmp/access.log.json LISTEN_PORT=8080 ./xray-loki-proxy
+# or:
+VECTOR_ENDPOINT=http://vector:8080 LISTEN_PORT=8080 ./xray-loki-proxy
 ```
 
 Skip rules path is fixed: `/etc/xray-loki-proxy/skip-rules.json` (optional).

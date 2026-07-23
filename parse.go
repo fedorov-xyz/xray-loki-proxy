@@ -12,18 +12,7 @@ import (
 
 // TODO: `2025/02/01 22:33:25 from 92.62.56.223:0 rejected  proxy/vless/encoding: failed to read request version > websocket: close 1000 (normal)`
 
-// LogEntry is the legacy NDJSON shape written to OUTPUT_FILE.
 type LogEntry struct {
-	Datetime string   `json:"datetime"`
-	From     string   `json:"from"`
-	Status   string   `json:"status"`
-	To       string   `json:"to"`
-	Route    string   `json:"route,omitempty"`
-	Email    string   `json:"email,omitempty"`
-	ToAddr   []string `json:"to_addr,omitempty"`
-}
-
-type LogEntryV2 struct {
 	Datetime  string   `json:"datetime"`
 	Email     string   `json:"email"`
 	FromProto string   `json:"from_proto"`
@@ -42,11 +31,11 @@ const (
 	outputTimeLayout = "2006-01-02 15:04:05.000000"
 	// maxToAddrNames caps PTR results; CDN IPs often return dozens of names.
 	maxToAddrNames = 5
-	// ptrLookupTimeout bounds reverse DNS on the v2/vector ingest path only.
+	// ptrLookupTimeout bounds reverse DNS on the ingest path only.
 	ptrLookupTimeout = 500 * time.Millisecond
 )
 
-// ptrDNSServers used by the v2 reverse-DNS path (Cloudflare, Google).
+// ptrDNSServers used by the reverse-DNS path (Cloudflare, Google).
 var ptrDNSServers = []string{
 	"1.1.1.1:53",
 	"1.0.0.1:53",
@@ -83,27 +72,6 @@ func parseLog(logLine string) (*LogEntry, error) {
 		return nil, err
 	}
 
-	entry := &LogEntry{
-		Datetime: groups["datetime"],
-		From:     groups["from"],
-		Status:   groups["status"],
-		To:       groups["to"],
-		Route:    normalizeRoute(groups["route"]),
-		Email:    groups["email"],
-	}
-
-	if dest, err := parseDestination(groups["to"]); err == nil {
-		entry.ToAddr = lookupToAddr(dest.Host)
-	}
-	return entry, nil
-}
-
-func parseLogV2(logLine string) (*LogEntryV2, error) {
-	groups, err := matchXrayLog(logLine)
-	if err != nil {
-		return nil, err
-	}
-
 	datetime, err := formatDatetimeUTC(groups["datetime"])
 	if err != nil {
 		logWarn("Failed to parse datetime %q: %v", groups["datetime"], err)
@@ -127,7 +95,7 @@ func parseLogV2(logLine string) (*LogEntryV2, error) {
 		toAddr = []string{}
 	}
 
-	return &LogEntryV2{
+	return &LogEntry{
 		Datetime:  datetime,
 		Email:     groups["email"],
 		FromProto: fromProto,
@@ -174,7 +142,7 @@ func formatDatetimeUTC(raw string) (string, error) {
 }
 
 // parseFromEndpoint parses [tcp:|udp:]?<ip>:<port>.
-// from_ip must be a valid IP; otherwise the line is rejected for v2.
+// from_ip must be a valid IP; otherwise the line is rejected.
 func parseFromEndpoint(from string) (proto, ip string, port uint16, err error) {
 	rest := from
 	switch {
@@ -224,19 +192,7 @@ func parseToEndpoint(to string) (proto, host string, port uint16, err error) {
 	return proto, host, uint16(p), nil
 }
 
-func lookupToAddr(host string) []string {
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return nil
-	}
-	names, err := net.LookupAddr(ip.String())
-	if err != nil || len(names) == 0 {
-		return nil
-	}
-	return normalizeToAddr(names)
-}
-
-// lookupToAddrTimed is used by the v2/vector path so a slow resolver cannot
+// lookupToAddrTimed is used by the ingest path so a slow resolver cannot
 // stall an HTTP ingest batch indefinitely.
 func lookupToAddrTimed(host string) []string {
 	ip := net.ParseIP(host)
