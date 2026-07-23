@@ -659,3 +659,39 @@ func assertParseLog(t *testing.T, line string, want LogEntry) {
 		t.Fatalf("parseLog()\n got: %+v\nwant: %+v", *got, want)
 	}
 }
+
+func TestNormalizeToAddr(t *testing.T) {
+	tests := []struct {
+		name  string
+		names []string
+		want  []string
+	}{
+		{
+			name:  "trims trailing dots",
+			names: []string{"apple.com.", "icloud.com."},
+			want:  []string{"apple.com", "icloud.com"},
+		},
+		{
+			name: "caps to maxToAddrNames",
+			names: []string{
+				"a.example.", "b.example.", "c.example.",
+				"d.example.", "e.example.", "f.example.", "g.example.",
+			},
+			want: []string{"a.example", "b.example", "c.example", "d.example", "e.example"},
+		},
+		{
+			name:  "short list unchanged",
+			names: []string{"one.example."},
+			want:  []string{"one.example"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeToAddr(append([]string(nil), tt.names...))
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("normalizeToAddr()\n got: %#v\nwant: %#v", got, tt.want)
+			}
+		})
+	}
+}

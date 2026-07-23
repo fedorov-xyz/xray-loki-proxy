@@ -39,6 +39,8 @@ type LogEntryV2 struct {
 const (
 	xrayTimeLayout   = "2006/01/02 15:04:05.000000"
 	outputTimeLayout = "2006-01-02 15:04:05.000000"
+	// maxToAddrNames caps PTR results; CDN IPs often return dozens of names.
+	maxToAddrNames = 5
 )
 
 var routeArrowRegex = regexp.MustCompile(`\s*(?:==>|->|>>)\s*`)
@@ -199,8 +201,15 @@ func lookupToAddr(host string) []string {
 	if err != nil || len(names) == 0 {
 		return nil
 	}
+	return normalizeToAddr(names)
+}
+
+func normalizeToAddr(names []string) []string {
 	for i := range names {
 		names[i] = strings.TrimSuffix(names[i], ".")
+	}
+	if len(names) > maxToAddrNames {
+		names = names[:maxToAddrNames]
 	}
 	return names
 }
