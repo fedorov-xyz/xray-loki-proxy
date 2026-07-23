@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
@@ -144,8 +145,16 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	srv := &http.Server{
+		Addr:              addr,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
 	logInfo("Server started on %s", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		logError("Server failed: %v", err)
 		os.Exit(1)
 	}

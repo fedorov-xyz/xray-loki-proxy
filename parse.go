@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"regexp"
@@ -41,9 +42,40 @@ const (
 	outputTimeLayout = "2006-01-02 15:04:05.000000"
 	// maxToAddrNames caps PTR results; CDN IPs often return dozens of names.
 	maxToAddrNames = 5
+	// ptrLookupTimeout bounds reverse DNS on the v2/vector ingest path only.
+	ptrLookupTimeout = 500 * time.Millisecond
 )
 
+// ptrDNSServers used by the v2 reverse-DNS path (Cloudflare, Google).
+var ptrDNSServers = []string{
+	"1.1.1.1:53",
+	"1.0.0.1:53",
+	"8.8.8.8:53",
+	"8.8.4.4:53",
+}
+
+// ptrResolver performs PTR lookups via ptrDNSServers (not the system resolver).
+var ptrResolver = newPTRResolver(ptrDNSServers)
+
 var routeArrowRegex = regexp.MustCompile(`\s*(?:==>|->|>>)\s*`)
+
+func newPTRResolver(servers []string) *net.Resolver {
+	return &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			d := net.Dialer{Timeout: ptrLookupTimeout}
+			var lastErr error
+			for _, server := range servers {
+				conn, err := d.DialContext(ctx, network, server)
+				if err == nil {
+					return conn, nil
+				}
+				lastErr = err
+			}
+			return nil, lastErr
+		},
+	}
+}
 
 func parseLog(logLine string) (*LogEntry, error) {
 	groups, err := matchXrayLog(logLine)
@@ -90,7 +122,7 @@ func parseLogV2(logLine string) (*LogEntryV2, error) {
 		return nil, err
 	}
 
-	toAddr := lookupToAddr(destHost)
+	toAddr := lookupToAddrTimed(destHost)
 	if toAddr == nil {
 		toAddr = []string{}
 	}
@@ -198,6 +230,23 @@ func lookupToAddr(host string) []string {
 		return nil
 	}
 	names, err := net.LookupAddr(ip.String())
+	if err != nil || len(names) == 0 {
+		return nil
+	}
+	return normalizeToAddr(names)
+}
+
+// lookupToAddrTimed is used by the v2/vector path so a slow resolver cannot
+// stall an HTTP ingest batch indefinitely.
+func lookupToAddrTimed(host string) []string {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), ptrLookupTimeout)
+	defer cancel()
+
+	names, err := ptrResolver.LookupAddr(ctx, ip.String())
 	if err != nil || len(names) == 0 {
 		return nil
 	}

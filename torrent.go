@@ -117,3 +117,23 @@ func notifyTorrentIfNeeded(entry *LogEntry) {
 
 	torrentNotifier.enqueue(entry)
 }
+
+func notifyTorrentIfNeededV2(entry *LogEntryV2) {
+	if torrentNotifier == nil {
+		return
+	}
+
+	if !strings.Contains(entry.Route, TORRENT_TAG) {
+		return
+	}
+
+	torrentNotifier.enqueue(&LogEntry{
+		Datetime: entry.Datetime,
+		From:     entry.FromIP,
+		Status:   entry.Status,
+		To:       entry.DestHost,
+		Route:    entry.Route,
+		Email:    entry.Email,
+		ToAddr:   entry.ToAddr,
+	})
+}
