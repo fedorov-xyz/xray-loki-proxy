@@ -20,7 +20,10 @@ COPY . .
 RUN CGO_ENABLED=${CGO_ENABLED} GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
   go build -a -installsuffix cgo -o /usr/bin/xray-loki-proxy .
 
-FROM --platform=${BUILDPLATFORM:-linux/amd64} gcr.io/distroless/static
+# Temporary debug base (shell/ping). Revert to gcr.io/distroless/static for prod.
+FROM --platform=${BUILDPLATFORM:-linux/amd64} alpine:3.21
+
+RUN apk add --no-cache curl bind-tools iputils
 
 WORKDIR /app
 COPY --from=builder /usr/bin/xray-loki-proxy /
