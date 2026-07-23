@@ -74,19 +74,16 @@ func parseLog(logLine string) (*LogEntry, error) {
 
 	datetime, err := formatDatetimeUTC(groups["datetime"])
 	if err != nil {
-		logWarn("Failed to parse datetime %q: %v", groups["datetime"], err)
 		return nil, err
 	}
 
 	fromProto, fromIP, fromPort, err := parseFromEndpoint(groups["from"])
 	if err != nil {
-		logWarn("Failed to parse from endpoint %q: %v", groups["from"], err)
 		return nil, err
 	}
 
 	destProto, destHost, destPort, err := parseToEndpoint(groups["to"])
 	if err != nil {
-		logWarn("Failed to parse to endpoint %q: %v", groups["to"], err)
 		return nil, err
 	}
 
@@ -113,7 +110,6 @@ func parseLog(logLine string) (*LogEntry, error) {
 func matchXrayLog(logLine string) (map[string]string, error) {
 	match := xrayLogFormat.FindStringSubmatch(logLine)
 	if match == nil {
-		logWarn("Failed to parse log line: %s", logLine)
 		return nil, fmt.Errorf("no match")
 	}
 
