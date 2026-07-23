@@ -19,7 +19,6 @@ var LOKI_PASSWORD = getEnv("LOKI_PASSWORD", "")
 var LISTEN_HOST = getEnv("LISTEN_HOST", "0.0.0.0")
 var LISTEN_PORT = getEnv("LISTEN_PORT", "8080")
 var OUTPUT_FILE = getEnv("OUTPUT_FILE", "")
-var OUTPUT_FILE_V2 = getEnv("OUTPUT_FILE_V2", "")
 
 const SKIP_RULES_PATH = "/etc/xray-loki-proxy/skip-rules.json"
 
@@ -52,10 +51,6 @@ func writeToFile(entry *LogEntry) {
 		return
 	}
 	appendJSONLine(OUTPUT_FILE, entry)
-}
-
-func writeToFileV2(entry *LogEntryV2) {
-	appendJSONLine(OUTPUT_FILE_V2, entry)
 }
 
 func appendJSONLine(path string, entry any) {
@@ -121,15 +116,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			writeToFile(logEntry)
-
-			if OUTPUT_FILE_V2 != "" {
-				entryV2, err := parseLogV2(entry.Line)
-				if err != nil {
-					logWarn("Skipping v2 emit for log: %s", entry.Line)
-					continue
-				}
-				writeToFileV2(entryV2)
-			}
 		}
 	}
 

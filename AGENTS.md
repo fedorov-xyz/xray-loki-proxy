@@ -1,13 +1,14 @@
 # Agent notes — xray-core-loki-proxy
 
-Small Go proxy: accepts Loki `logproto` push requests, parses Xray-core access log lines into `LogEntry`, applies skip rules, optionally notifies on torrent tags, appends JSON lines to `OUTPUT_FILE`. When `OUTPUT_FILE_V2` is set, also emits `LogEntryV2` NDJSON beside the legacy file.
+Small Go proxy: accepts Loki `logproto` push requests, parses Xray-core access log lines into `LogEntry`, applies skip rules, optionally notifies on torrent tags, appends JSON lines to `OUTPUT_FILE`. Also exposes `/vector/ingest` which emits `LogEntryV2` NDJSON for Vector.
 
 ## Layout
 
 | File | Role |
 |------|------|
-| `main.go` | HTTP handlers (`/loki/api/v1/push`, readiness), regex `xrayLogFormat`, dual file writers |
+| `main.go` | HTTP handlers (`/loki/api/v1/push`, `/vector/ingest`, readiness), regex `xrayLogFormat`, file writer |
 | `parse.go` | `LogEntry` / `LogEntryV2`, `parseLog` / `parseLogV2` (route arrows → ` - `; optional PTR → `to_addr`) |
+| `vector.go` | Vector ingest handler + line processing |
 | `skip.go` | destination parsing, domain/IP skip rules |
 | `torrent.go` | batched torrent notify |
 | `log.go` / `utils.go` | logging + `getEnv` |
@@ -27,8 +28,8 @@ go vet ./...
 # local binary
 go build -o xray-loki-proxy .
 
-# run (needs OUTPUT_FILE; OUTPUT_FILE_V2 enables v2 emit)
-OUTPUT_FILE=/tmp/access.log.json OUTPUT_FILE_V2=/tmp/access.log.v2.json LISTEN_PORT=8080 ./xray-loki-proxy
+# run (needs OUTPUT_FILE)
+OUTPUT_FILE=/tmp/access.log.json LISTEN_PORT=8080 ./xray-loki-proxy
 ```
 
 Skip rules path is fixed: `/etc/xray-loki-proxy/skip-rules.json` (optional).
