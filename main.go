@@ -148,6 +148,8 @@ func main() {
 
 	http.HandleFunc("/loki/api/v1/push", handler)
 
+	http.HandleFunc("/vector/ingest", vectorIngestHandler)
+
 	http.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
