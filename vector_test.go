@@ -12,7 +12,12 @@ import (
 
 func TestProcessLinesParallel(t *testing.T) {
 	prevRules := skipRules
-	t.Cleanup(func() { skipRules = prevRules })
+	prevEnabled := skipRulesEnabled
+	t.Cleanup(func() {
+		skipRules = prevRules
+		skipRulesEnabled = prevEnabled
+	})
+	skipRulesEnabled = true
 
 	lineA := `2026/07/23 10:11:12.100000 from 203.0.113.47:4821 accepted tcp:198.51.100.88:443 [IN_TCP_XTLS_A7 >> DIRECT] email: 1204`
 	lineB := `2026/07/23 10:11:12.200000 from 198.51.100.14:29104 accepted tcp:probe.example-cdn.net:443 [PROXY_EDGE_42 -> DIRECT] email: 8831`
@@ -23,6 +28,7 @@ func TestProcessLinesParallel(t *testing.T) {
 	tests := []struct {
 		name       string
 		rules      []SkipRule
+		enabled    *bool
 		in         []string
 		wantEmails []string
 		want       []LogEntry
@@ -89,6 +95,15 @@ func TestProcessLinesParallel(t *testing.T) {
 			wantEmails: []string{"1204", "8831"},
 		},
 		{
+			name: "keeps skip-rule matches when disabled",
+			rules: []SkipRule{
+				{IP: []string{"203.0.113.200"}},
+			},
+			enabled:    boolPtr(false),
+			in:         []string{lineA, skippedByIP, lineB},
+			wantEmails: []string{"1204", "555", "8831"},
+		},
+		{
 			name:       "all unparsable yields empty dense list",
 			in:         []string{bad, bad},
 			wantEmails: []string{},
@@ -98,6 +113,11 @@ func TestProcessLinesParallel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			skipRules = tt.rules
+			if tt.enabled != nil {
+				skipRulesEnabled = *tt.enabled
+			} else {
+				skipRulesEnabled = true
+			}
 
 			got := processLinesParallel(tt.in)
 			for _, e := range got {
@@ -129,6 +149,8 @@ func TestProcessLinesParallel(t *testing.T) {
 		})
 	}
 }
+
+func boolPtr(v bool) *bool { return &v }
 
 func TestProcessLinesParallel_ConcurrencySmoke(t *testing.T) {
 	prevRules := skipRules

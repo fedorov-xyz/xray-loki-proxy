@@ -34,7 +34,7 @@ OUTPUT_FILE=/tmp/access.log.json LISTEN_PORT=8080 ./xray-loki-proxy
 VECTOR_ENDPOINT=http://vector:8080 LISTEN_PORT=8080 ./xray-loki-proxy
 ```
 
-Skip rules path is fixed: `/etc/xray-loki-proxy/skip-rules.json` (optional).
+Skip rules path is fixed: `/etc/xray-loki-proxy/skip-rules.json` (optional). Disable with `SKIP_RULES_ENABLED=false`.
 
 ## Pre-commit
 

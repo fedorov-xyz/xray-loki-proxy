@@ -13,6 +13,7 @@ var LISTEN_HOST = getEnv("LISTEN_HOST", "0.0.0.0")
 var LISTEN_PORT = getEnv("LISTEN_PORT", "8080")
 var OUTPUT_FILE = getEnv("OUTPUT_FILE", "")
 var VECTOR_ENDPOINT = getEnv("VECTOR_ENDPOINT", "")
+var skipRulesEnabled = getEnvBool("SKIP_RULES_ENABLED", true)
 
 const SKIP_RULES_PATH = "/etc/xray-loki-proxy/skip-rules.json"
 
@@ -22,6 +23,11 @@ var xrayLogFormat = regexp.MustCompile(`^(?P<datetime>\S+\s+\S+)\s*?(from\s)?(?P
 var skipRules []SkipRule
 
 func loadSkipRules() error {
+	if !skipRulesEnabled {
+		logInfo("Skip rules disabled (SKIP_RULES_ENABLED=false)")
+		return nil
+	}
+
 	data, err := os.ReadFile(SKIP_RULES_PATH)
 	if err != nil {
 		if os.IsNotExist(err) {

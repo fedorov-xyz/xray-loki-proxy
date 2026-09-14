@@ -83,6 +83,7 @@ Mount a `skip-rules.json` file into `/etc/xray-loki-proxy/skip-rules.json` with 
 | LISTEN_HOST        | Host to listen on                                    | 0.0.0.0 |
 | LISTEN_PORT        | Port to listen on                                    | 8080    |
 | LOG_LEVEL          | Log level (debug/info/warn/error)                    | info    |
+| SKIP_RULES_ENABLED | Apply `/etc/xray-loki-proxy/skip-rules.json` filters | true    |
 | TORRENT_TAG        | Tag to detect torrent traffic in route field         | -       |
 | TORRENT_NOTIFY_URL | URL to send POST notifications about torrent traffic | -       |
 
