@@ -28,7 +28,7 @@ type LogEntry struct {
 
 const (
 	xrayTimeLayout   = "2006/01/02 15:04:05.000000"
-	outputTimeLayout = "2006-01-02 15:04:05.000000"
+	outputTimeLayout = "2006-01-02 15:04:05"
 	// maxToAddrNames caps PTR results; CDN IPs often return dozens of names.
 	maxToAddrNames = 5
 	// ptrLookupTimeout bounds reverse DNS on the ingest path only.

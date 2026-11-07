@@ -44,7 +44,7 @@ func TestProcessLinesParallel(t *testing.T) {
 			wantEmails: []string{"1204", "8831", "7712"},
 			want: []LogEntry{
 				{
-					Datetime:  "2026-07-23 10:11:12.100000",
+					Datetime:  "2026-07-23 10:11:12",
 					FromIP:    "203.0.113.47",
 					FromPort:  4821,
 					Status:    "accepted",
@@ -56,7 +56,7 @@ func TestProcessLinesParallel(t *testing.T) {
 					ToAddr:    []string{},
 				},
 				{
-					Datetime:  "2026-07-23 10:11:12.200000",
+					Datetime:  "2026-07-23 10:11:12",
 					FromIP:    "198.51.100.14",
 					FromPort:  29104,
 					Status:    "accepted",
@@ -68,7 +68,7 @@ func TestProcessLinesParallel(t *testing.T) {
 					ToAddr:    []string{},
 				},
 				{
-					Datetime:  "2026-07-23 10:11:12.300000",
+					Datetime:  "2026-07-23 10:11:12",
 					FromIP:    "203.0.113.9",
 					FromPort:  0,
 					Status:    "accepted",
@@ -256,7 +256,7 @@ func TestEmitBatch_File(t *testing.T) {
 
 	entries := []*LogEntry{
 		{
-			Datetime:  "2026-07-23 10:11:12.100000",
+			Datetime:  "2026-07-23 10:11:12",
 			Email:     "1204",
 			FromIP:    "203.0.113.47",
 			FromPort:  4821,

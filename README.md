@@ -12,7 +12,7 @@ Example output event (`LogEntry`):
 
 ```json
 {
-  "datetime": "2026-07-23 10:11:12.100000",
+  "datetime": "2026-07-23 10:11:12",
   "email": "1204",
   "from_proto": "",
   "from_ip": "203.0.113.47",
