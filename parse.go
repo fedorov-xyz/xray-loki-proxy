@@ -24,6 +24,7 @@ type LogEntry struct {
 	Status    string   `json:"status"`
 	Route     string   `json:"route"`
 	ToAddr    []string `json:"to_addr"`
+	Sink      string   `json:"sink,omitempty"`
 }
 
 const (

@@ -70,9 +70,26 @@ Mount a `skip-rules.json` file into `/etc/xray-loki-proxy/skip-rules.json` with 
   },
   {
     "ip": ["1.1.1.1", "0.0.0.0/8", "10.0.0.0/8"]
+  },
+  {
+    "action": "noise",
+    "email": ["1204"],
+    "route": ["IN_UDP - DIRECT"]
   }
 ]
 ```
+
+Rule fields (a rule matches if **any** of its matchers matches):
+
+| Field    | Match                                                                 |
+| -------- | --------------------------------------------------------------------- |
+| `action` | `drop` (default when omitted) or `noise`                              |
+| `domain` | `domain:` suffix, `full:` exact, else substring; also checked against PTR names in `to_addr` |
+| `ip`     | exact IP or CIDR on `dest_host`                                       |
+| `email`  | exact `email`                                                         |
+| `route`  | substring of normalized `route` (`IN - OUT`)                          |
+
+Order of rules does not matter: if any `drop` rule matches, the line is dropped; otherwise, if any `noise` rule matches, the line is kept with `"sink":"noise"` (regular lines have no `sink` field). `SKIP_RULES_ENABLED=false` disables both actions.
 
 ### Environment Variables
 

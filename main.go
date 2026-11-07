@@ -40,6 +40,11 @@ func loadSkipRules() error {
 	if err := json.Unmarshal(data, &skipRules); err != nil {
 		return fmt.Errorf("error parsing skip rules: %v", err)
 	}
+	for i, rule := range skipRules {
+		if rule.Action != "" && rule.Action != ActionDrop && rule.Action != ActionNoise {
+			return fmt.Errorf("skip rule #%d: unknown action %q (want %q or %q)", i, rule.Action, ActionDrop, ActionNoise)
+		}
+	}
 
 	logInfo("Loaded skip rules from %s", SKIP_RULES_PATH)
 	return nil

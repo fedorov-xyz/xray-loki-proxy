@@ -5,9 +5,18 @@ import (
 	"strings"
 )
 
+const (
+	ActionDrop  = "drop"
+	ActionNoise = "noise"
+)
+
 type SkipRule struct {
+	// Action is "drop" (default when empty) or "noise"
+	Action string   `json:"action,omitempty"`
 	Domain []string `json:"domain,omitempty"`
 	IP     []string `json:"ip,omitempty"`
+	Email  []string `json:"email,omitempty"`
+	Route  []string `json:"route,omitempty"`
 }
 
 func isIPInRange(ip net.IP, pattern string) bool {
@@ -38,41 +47,69 @@ func matchDomain(pattern, domain string) bool {
 	return strings.Contains(domain, pattern)
 }
 
-func isSkipped(entry *LogEntry, rules []SkipRule) bool {
-	return matchSkipRules(entry.DestHost, entry.DestHost, entry.ToAddr, rules)
+// applySkipRules reports whether entry must be dropped. Any matching drop rule
+// wins regardless of order; otherwise a matching noise rule sets Sink="noise".
+func applySkipRules(entry *LogEntry, rules []SkipRule) bool {
+	noise := ""
+	for _, rule := range rules {
+		reason := matchRule(entry, rule)
+		if reason == "" {
+			continue
+		}
+		if rule.Action == ActionNoise {
+			if noise == "" {
+				noise = reason
+			}
+			continue
+		}
+		logInfo("Skipping %s: %s", entry.DestHost, reason)
+		return true
+	}
+	if noise != "" {
+		// noise matches ~half of the traffic; keep it out of info logs.
+		logDebug("Marking %s as noise: %s", entry.DestHost, noise)
+		entry.Sink = ActionNoise
+	}
+	return false
 }
 
-func matchSkipRules(label, host string, toAddr []string, rules []SkipRule) bool {
-	for _, rule := range rules {
-		if len(rule.IP) > 0 {
-			if ip := net.ParseIP(host); ip != nil {
-				for _, pattern := range rule.IP {
-					if isIPInRange(ip, pattern) {
-						logInfo("Skipping %s: matched IP rule: %s", label, pattern)
-						return true
-					}
-				}
-			}
+// matchRule returns a description of the first matcher of rule that hits entry, or "".
+func matchRule(entry *LogEntry, rule SkipRule) string {
+	// cheap string matchers first
+	for _, email := range rule.Email {
+		if entry.Email == email {
+			return "matched email rule: " + email
 		}
+	}
 
-		if len(rule.Domain) > 0 {
-			for _, pattern := range rule.Domain {
-				if matchDomain(pattern, host) {
-					logInfo("Skipping %s: matched domain rule: %s", label, pattern)
-					return true
-				}
-			}
+	for _, route := range rule.Route {
+		if strings.Contains(entry.Route, route) {
+			return "matched route rule: " + route
+		}
+	}
 
-			for _, address := range toAddr {
-				for _, pattern := range rule.Domain {
-					if matchDomain(pattern, address) {
-						logInfo("Skipping %s: matched domain rule %s via PTR %s", label, pattern, address)
-						return true
-					}
+	if len(rule.IP) > 0 {
+		if ip := net.ParseIP(entry.DestHost); ip != nil {
+			for _, pattern := range rule.IP {
+				if isIPInRange(ip, pattern) {
+					return "matched IP rule: " + pattern
 				}
 			}
 		}
 	}
 
-	return false
+	for _, pattern := range rule.Domain {
+		if matchDomain(pattern, entry.DestHost) {
+			return "matched domain rule: " + pattern
+		}
+	}
+	for _, address := range entry.ToAddr {
+		for _, pattern := range rule.Domain {
+			if matchDomain(pattern, address) {
+				return "matched domain rule " + pattern + " via PTR " + address
+			}
+		}
+	}
+
+	return ""
 }
