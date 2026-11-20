@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"regexp"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -21,7 +24,15 @@ const SKIP_RULES_PATH = "/etc/xray-loki-proxy/skip-rules.json"
 var xrayLogFormat = regexp.MustCompile(`^(?P<datetime>\S+\s+\S+)\s*?(from\s)?(?P<from>\S+)\s+(?P<status>\S+)\s+(?P<to>\S+)(?:\s+\[(?P<route>.*?)\])?(?:\s+email:\s+(?P<email>\S+))?$`)
 
 var skipRules []SkipRule
+var skipRulesMu sync.RWMutex // guards skipRules against SIGHUP reloads
 
+func currentSkipRules() []SkipRule {
+	skipRulesMu.RLock()
+	defer skipRulesMu.RUnlock()
+	return skipRules
+}
+
+// loadSkipRules (re)reads SKIP_RULES_PATH; on error the current rules stay in place.
 func loadSkipRules() error {
 	if !skipRulesEnabled {
 		logInfo("Skip rules disabled (SKIP_RULES_ENABLED=false)")
@@ -32,22 +43,44 @@ func loadSkipRules() error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			logInfo("Skip rules file not found at %s, continuing without rules", SKIP_RULES_PATH)
+			setSkipRules(nil)
 			return nil
 		}
 		return fmt.Errorf("error reading skip rules file: %v", err)
 	}
 
-	if err := json.Unmarshal(data, &skipRules); err != nil {
+	var rules []SkipRule
+	if err := json.Unmarshal(data, &rules); err != nil {
 		return fmt.Errorf("error parsing skip rules: %v", err)
 	}
-	for i, rule := range skipRules {
+	for i, rule := range rules {
 		if rule.Action != "" && rule.Action != ActionDrop && rule.Action != ActionNoise {
 			return fmt.Errorf("skip rule #%d: unknown action %q (want %q or %q)", i, rule.Action, ActionDrop, ActionNoise)
 		}
 	}
 
-	logInfo("Loaded skip rules from %s", SKIP_RULES_PATH)
+	setSkipRules(rules)
+	logInfo("Loaded %d skip rules from %s", len(rules), SKIP_RULES_PATH)
 	return nil
+}
+
+func setSkipRules(rules []SkipRule) {
+	skipRulesMu.Lock()
+	skipRules = rules
+	skipRulesMu.Unlock()
+}
+
+func reloadOnSIGHUP() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGHUP)
+	go func() {
+		for range ch {
+			logInfo("SIGHUP received, reloading skip rules")
+			if err := loadSkipRules(); err != nil {
+				logError("Skip rules reload failed, keeping previous rules: %v", err)
+			}
+		}
+	}()
 }
 
 func validateSinkConfig() error {
@@ -91,6 +124,7 @@ func main() {
 		logError("Failed to load skip rules: %v", err)
 		os.Exit(1)
 	}
+	reloadOnSIGHUP()
 
 	startTorrentNotifier()
 

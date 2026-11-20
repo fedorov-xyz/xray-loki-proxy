@@ -39,7 +39,7 @@ func processLine(line string) (*LogEntry, error) {
 
 	notifyTorrentIfNeeded(entry)
 
-	if skipRulesEnabled && applySkipRules(entry, skipRules) {
+	if skipRulesEnabled && applySkipRules(entry, currentSkipRules()) {
 		return nil, nil
 	}
 
